@@ -12,7 +12,8 @@ class Entrada extends Model
         'max_por_compra', 'precio', 'disponible_desde', 'disponible_hasta', 'tipo',
     ];
 
-    public function evento(): BelongsTo {
-        return $this->belongsTo(Evento::class);
+    public function evento()
+    {
+        return $this->belongsTo(Evento::class, 'evento_id');
     }
 }
