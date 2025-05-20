@@ -67,9 +67,11 @@
     }
 </style>
 
+{{-- Código de tu comprar.blade.php --}}
 <div class="container">
-    <h1>Comprar entradas para: {{ $evento->nombre }}</h1>
+    <h1>Selecciona tus entradas para: {{ $evento->nombre }}</h1>
 
+    {{-- Mensajes de éxito/error --}}
     @if(session('success'))
         <div class="success-message">{{ session('success') }}</div>
     @endif
@@ -84,14 +86,17 @@
         </div>
     @endif
 
-    <form action="{{ route('comprar.entrada.store', $evento->id) }}" method="POST">
+    <form action="{{ route('comprar.store-seleccionar-entradas', $evento->id) }}" method="POST">
         @csrf
 
+        {{-- Tus campos de nombre y email ya no van aquí, irán en el siguiente paso --}}
+        {{-- Quitamos:
         <label for="nombre">Nombre:</label>
         <input type="text" id="nombre" name="nombre" value="{{ old('nombre') }}" required><br>
 
         <label for="email">Email:</label>
         <input type="email" id="email" name="email" value="{{ old('email') }}" required><br>
+        --}}
 
         <div class="row">
             @foreach($entradas as $entrada)
@@ -106,7 +111,8 @@
                                 <label for="cantidad_{{ $entrada->id }}">Cantidad:</label>
                                 <div class="input-group">
                                     <button type="button" class="btn btn-outline-secondary minus-btn" data-entrada-id="{{ $entrada->id }}">-</button>
-                                    <input type="number" class="form-control cantidad-input" id="cantidad_{{ $entrada->id }}" name="cantidades[{{ $entrada->id }}]" value="0" min="0" max="{{ $entrada->max_por_compra ?? $entrada->stock_actual }}">
+                                    {{-- El 'old' para las cantidades es un poco más complejo aquí --}}
+                                    <input type="number" class="form-control cantidad-input" id="cantidad_{{ $entrada->id }}" name="cantidades[{{ $entrada->id }}]" value="{{ old('cantidades.' . $entrada->id, 0) }}" min="0" max="{{ $entrada->max_por_compra ?? $entrada->stock_actual }}">
                                     <button type="button" class="btn btn-outline-secondary plus-btn" data-entrada-id="{{ $entrada->id }}">+</button>
                                 </div>
                                 @if ($entrada->max_por_compra)
@@ -119,12 +125,13 @@
             @endforeach
         </div>
 
-        <button type="submit">Comprar</button>
+        <button type="submit">Continuar Pedido</button> {{-- Cambia el texto del botón --}}
     </form>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // ... (Tu JavaScript existente para los botones +/-) ...
         document.querySelectorAll('.plus-btn').forEach(button => {
             button.addEventListener('click', function() {
                 const entradaId = this.dataset.entradaId;

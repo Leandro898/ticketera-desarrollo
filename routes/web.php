@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CompraEntradaController;
-
+use App\Http\Controllers\EventoPublicoController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -23,3 +23,27 @@ Route::get('/evento/{evento}/comprar', [CompraEntradaController::class, 'show'])
 // Procesar compra
 Route::post('/evento/{evento}/comprar', [CompraEntradaController::class, 'store'])
     ->name('comprar.entrada.store');
+
+// Ruta para la página de detalles del evento
+Route::get('/evento/{evento}', [EventoPublicoController::class, 'show'])->name('evento.show');
+
+// Ruta para mostrar las entradas disponibles y seleccionar cantidades
+Route::get('/evento/{evento}/seleccionar-entradas', [CompraEntradaController::class, 'showSeleccionarEntradas'])->name('comprar.seleccionar-entradas');
+
+// Ruta para procesar la selección de entradas y pasar a datos del comprador
+Route::post('/evento/{evento}/seleccionar-entradas', [CompraEntradaController::class, 'storeSeleccionarEntradas'])->name('comprar.store-seleccionar-entradas');
+
+// Ruta para mostrar el formulario de datos del comprador
+Route::get('/evento/{evento}/datos-comprador', [CompraEntradaController::class, 'showDatosComprador'])->name('comprar.datos-comprador');
+
+// Ruta para procesar los datos del comprador y pasar al checkout
+Route::post('/evento/{evento}/datos-comprador', [CompraEntradaController::class, 'storeDatosComprador'])->name('comprar.store-datos-comprador');
+
+// Ruta para mostrar la página de checkout
+Route::get('/evento/{evento}/checkout', [CompraEntradaController::class, 'showCheckout'])->name('comprar.checkout');
+
+// Ruta para finalizar la compra (PAGO y creación de tickets)
+Route::post('/evento/{evento}/finalizar-compra', [CompraEntradaController::class, 'finalizarCompra'])->name('comprar.finalizar-compra');
+
+// Ruta para la página de éxito de la compra
+Route::get('/compra-exitosa/{evento}', [CompraEntradaController::class, 'compraExitosa'])->name('compra.exitosa');
