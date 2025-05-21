@@ -78,6 +78,9 @@
             <i class="fas fa-gift mr-2"></i> Enviar cortesías
         </button>
 
+        <div>
+            <a href="{{ route('mercadopago.connect') }}" class="btn btn-primary">Conectar con Mercado Pago</a>
+        </div>
 
         <div x-data="{ confirmarEliminacion: false, cargando: false }" class="relative">
     <button 

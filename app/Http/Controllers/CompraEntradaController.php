@@ -8,10 +8,22 @@ use App\Models\Ticket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Facades\Session; // Importar la clase Session
+use Illuminate\Support\Facades\Session;
+use MercadoPago\SDK;
+use MercadoPago\Item;
+use MercadoPago\Payer;
+use MercadoPago\Preference;
+use MercadoPago\Payment;
 
 class CompraEntradaController extends Controller
 {
+    public function __construct()
+    {
+        // Tus credenciales de plataforma
+        SDK::setClientId(config('mercadopago.client_id'));
+        SDK::setClientSecret(config('mercadopago.client_secret'));
+        SDK::setSandboxMode(config('mercadopago.sandbox'));
+    }
     // Método para mostrar la página de selección de entradas (Paso 2)
     public function showSeleccionarEntradas(Evento $evento)
     {
@@ -122,18 +134,106 @@ class CompraEntradaController extends Controller
 
     public function showCheckout(Evento $evento)
     {
-        // Asegurarse de que haya entradas seleccionadas y datos del comprador en la sesión
-        if (!Session::has('selected_entradas') || !Session::has('comprador_data')) {
-            return redirect()->route('evento.show', $evento->id) // O a un paso anterior
-                             ->withErrors(['error' => 'Información de compra incompleta.']);
-        }
-
-        $selectedEntradas = Session::get('selected_entradas');
+        $entradasSeleccionadas = Session::get('entradas_seleccionadas_' . $evento->id);
         $compradorData = Session::get('comprador_data');
 
-        $totalPagar = array_sum(array_column($selectedEntradas, 'subtotal'));
+        if (!$entradasSeleccionadas || !$compradorData) {
+            return redirect()->route('comprar.seleccionar-entradas', $evento->id)
+                             ->with('error', 'Debes seleccionar entradas y proporcionar tus datos primero.');
+        }
 
-        return view('tickets.checkout', compact('evento', 'selectedEntradas', 'compradorData', 'totalPagar'));
+        $total = 0;
+        $items = [];
+        foreach ($entradasSeleccionadas as $id => $cantidad) {
+            $entrada = Entrada::find($id);
+            if ($entrada && $cantidad > 0) {
+                $subtotal = $entrada->precio * $cantidad;
+                $total += $subtotal;
+
+                $item = new Item();
+                $item->id = $entrada->id;
+                $item->title = $entrada->nombre;
+                $item->quantity = $cantidad;
+                $item->unit_price = $entrada->precio;
+                $items[] = $item;
+            }
+        }
+
+        // --- Lógica para Mercado Pago Preference con Split Payments ---
+        $preference = new Preference();
+        $preference->items = $items;
+
+        $payer = new Payer();
+        $payer->name = $compradorData['nombre_completo'];
+        $payer->email = $compradorData['email'];
+        // Si necesitas más datos del pagador (DNI, teléfono), agrégalos aquí.
+        // $payer->identification = array("type" => "DNI", "number" => $compradorData['dni']);
+        $preference->payer = $payer;
+
+        // URL a donde Mercado Pago redirigirá después de la compra (éxito, pendiente, falla)
+        $preference->back_urls = array(
+            "success" => route('compra.exitosa', $evento->id),
+            "failure" => route('comprar.checkout', $evento->id) . '?status=failure', // Vuelve al checkout con un mensaje
+            "pending" => route('comprar.checkout', $evento->id) . '?status=pending', // Vuelve al checkout con un mensaje
+        );
+        $preference->auto_return = "approved"; // Para redirigir automáticamente solo en éxito
+
+        // **Configuración de Notificaciones (Webhooks)**
+        // Muy importante para que Mercado Pago te notifique el estado del pago
+        $preference->notification_url = route('mercadopago.webhook'); // Crear esta ruta y método
+        $preference->external_reference = $evento->id . '_' . uniqid(); // Un ID único para tu referencia
+
+        // --- Lógica del Split Payment ---
+        // Asume que tu Evento tiene un organizador asociado y este tiene un mp_access_token
+        // Ejemplo: $evento->user (si el user es el organizador)
+        $organizador = $evento->user; // Ajusta según tu relación (ej. $evento->organizador)
+
+        if (!$organizador || !$organizador->mp_access_token) {
+            // Manejar error: el organizador no tiene su cuenta MP conectada
+            return redirect()->back()->with('error', 'El organizador no tiene su cuenta de Mercado Pago configurada.');
+        }
+
+        // Establece el access_token del receptor (el organizador)
+        // MercadoPago\SDK::setAccessToken($organizador->mp_access_token); // NO HACER ESTO AQUI!
+        // La preferencia siempre se crea con el access_token de la plataforma.
+        // El split payment se especifica dentro de la preferencia.
+
+        // Calcula comisiones
+        $comision_plataforma_porcentaje = 0.05; // 5% para tu plataforma
+        $monto_para_organizador = $total - ($total * $comision_plataforma_porcentaje);
+
+        // Define el beneficiario (el organizador)
+        // La API de Pagos Divididos va dentro de 'payments' o 'marketplace_settings' en el SDK de PHP
+        // Para Checkout Pro, usas 'marketplace_settings' con 'installments' y 'payments' para la split
+        $preference->marketplace_settings = [
+            'installments' => 1, // Número de cuotas, para split payment se recomienda 1.
+            'payments' => [
+                'receiver_address' => [
+                    'zip_code' => 'B7600', // Código postal ficticio del receptor si no lo tienes
+                    'street_name' => 'Organizador St',
+                    'street_number' => 123,
+                ],
+                'split_payments' => [
+                    [
+                        'payer_id' => $organizador->mp_user_id, // El user_id de Mercado Pago del organizador
+                        'amount' => round($monto_para_organizador, 2), // Redondea a 2 decimales
+                        'fee_bearer' => 'payer', // 'payer' = comprador, 'receiver' = vendedor (organizador)
+                                                 // Esto es crítico para determinar quién paga las comisiones de MP.
+                                                 // Si es 'payer', las comisiones las descuenta de tu comisión o del monto total.
+                                                 // Si es 'receiver', las comisiones de MP se descuentan del monto del organizador.
+                    ],
+                ],
+            ],
+        ];
+
+        try {
+            $preference->save();
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Error al generar el pago con Mercado Pago: ' . $e->getMessage());
+        }
+
+        // Pasa el ID de la preferencia a la vista
+        return view('tickets.checkout', compact('evento', 'entradasSeleccionadas', 'compradorData', 'total', 'preference'));
     }
 
     public function finalizarCompra(Request $request, Evento $evento)

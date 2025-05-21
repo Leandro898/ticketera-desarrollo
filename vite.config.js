@@ -10,4 +10,9 @@ export default defineConfig({
         }),
         tailwindcss(),
     ],
+    server: {
+        host: true,
+        https: false, // <-- ngrok ya te da HTTPS
+    },
 });
+

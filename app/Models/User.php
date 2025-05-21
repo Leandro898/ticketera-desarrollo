@@ -21,6 +21,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'mp_access_token', // Almacenará el access_token del vendedor/organizador
+        'mp_public_key',   // Opcional, pero útil para algunos frontends
+        'mp_user_id',      // El user_id de Mercado Pago del vendedor
     ];
 
     /**

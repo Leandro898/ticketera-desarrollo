@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CompraEntradaController;
 use App\Http\Controllers\EventoPublicoController;
+use App\Http\Controllers\MercadoPagoController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -47,3 +48,27 @@ Route::post('/evento/{evento}/finalizar-compra', [CompraEntradaController::class
 
 // Ruta para la página de éxito de la compra
 Route::get('/compra-exitosa/{evento}', [CompraEntradaController::class, 'compraExitosa'])->name('compra.exitosa');
+
+// Rutas para la conexión de Mercado Pago (OAuth para vendedores)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/mercadopago/connect', [MercadoPagoController::class, 'connect'])->name('mercadopago.connect');
+    Route::get('/mercadopago/callback', [MercadoPagoController::class, 'callback'])->name('mercadopago.callback');
+});
+
+// routes/web.php
+Route::post('/mercadopago/webhook', [MercadoPagoController::class, 'handleWebhook'])->name('mercadopago.webhook');
+
+//Ruta para ver si muestra token
+Route::get('/debug-token', function () {
+    $token = config('mercadopago.platform_access_token');
+    return $token ?? 'TOKEN NO DEFINIDO';
+});
+
+Route::middleware(['auth'])->group(function () {
+    // ... tus rutas de mercadopago.connect y mercadopago.callback ...
+
+    // Añade esta ruta para el dashboard si no existe
+    Route::get('/dashboard', function () {
+        return view('welcome'); // Asegúrate de que tienes una vista 'dashboard.blade.php'
+    })->name('dashboard');
+});

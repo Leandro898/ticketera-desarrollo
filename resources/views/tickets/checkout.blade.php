@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Checkout - {{ $evento->nombre }}</title>
     <style>
-        /* CSS similar al dark mode que ya tienes */
+        /* ... (CSS existente) ... */
         body {
             font-family: Arial, sans-serif;
             background-color: #1a1a1a;
@@ -21,20 +21,14 @@
             padding: 30px;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
-            width: 550px;
+            width: 600px;
             max-width: 90%;
+            text-align: center;
         }
         h1 {
             color: #fff;
             margin-bottom: 25px;
             font-size: 1.8em;
-            text-align: center;
-        }
-        .order-summary, .payment-options {
-            background-color: #3a3a3a;
-            padding: 20px;
-            border-radius: 6px;
-            margin-bottom: 25px;
         }
         .summary-item {
             display: flex;
@@ -42,73 +36,57 @@
             margin-bottom: 10px;
             font-size: 1.1em;
         }
-        .summary-item strong {
-            color: #fff;
-        }
-        .total-item {
-            font-size: 1.5em;
+        .summary-total {
+            font-size: 1.4em;
             font-weight: bold;
-            border-top: 1px solid #4a4a4a;
+            margin-top: 20px;
             padding-top: 15px;
-            margin-top: 15px;
+            border-top: 1px solid #444;
         }
-        .payment-option {
-            display: flex;
-            align-items: center;
-            background-color: #4a4a4a;
+        .payment-methods {
+            text-align: left;
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }
+        .payment-method-item {
+            background-color: #3a3a3a;
             padding: 15px;
-            border-radius: 6px;
+            border-radius: 8px;
             margin-bottom: 15px;
             cursor: pointer;
-            transition: background-color 0.2s ease;
+            transition: background-color 0.3s ease;
+            display: flex;
+            align-items: center;
         }
-        .payment-option:hover {
-            background-color: #5a5a5a;
+        .payment-method-item:hover {
+            background-color: #4a4a4a;
         }
-        .payment-option input[type="radio"] {
+        .payment-method-item input[type="radio"] {
             margin-right: 15px;
             transform: scale(1.2);
+            accent-color: #8a2be2;
         }
-        .payment-option img {
-            width: 30px; /* Tamaño del icono */
-            height: auto;
+        .payment-method-item label {
+            flex-grow: 1;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+        }
+        .payment-method-item img {
+            height: 24px;
             margin-right: 10px;
         }
-        .payment-option .text {
-            flex-grow: 1;
-        }
-        .payment-option .text strong {
-            display: block;
-            color: #fff;
-        }
-        .payment-option .text small {
-            color: #b0b0b0;
-        }
         .terms-checkbox {
-            margin-top: 20px;
-            margin-bottom: 25px;
-            display: flex;
-            align-items: flex-start;
+            margin-top: 25px;
             text-align: left;
+            font-size: 0.95em;
         }
         .terms-checkbox input[type="checkbox"] {
             margin-right: 10px;
-            transform: scale(1.2);
-            position: relative;
-            top: 2px;
+            transform: scale(1.1);
+            accent-color: #8a2be2;
         }
-        .terms-checkbox label {
-            font-size: 0.9em;
-            color: #b0b0b0;
-        }
-        .terms-checkbox a {
-            color: #8a2be2;
-            text-decoration: none;
-        }
-        .terms-checkbox a:hover {
-            text-decoration: underline;
-        }
-        .checkout-button {
+        .continue-button {
             background-color: #8a2be2;
             color: white;
             padding: 15px 30px;
@@ -118,96 +96,100 @@
             cursor: pointer;
             transition: background-color 0.3s ease;
             width: 100%;
+            margin-top: 25px;
         }
-        .checkout-button:hover {
+        .continue-button:hover {
             background-color: #7a1fd1;
         }
-        .conditions-text {
-            font-size: 0.85em;
+        .conditions-box {
+            background-color: #2a2a2a;
+            border-top: 1px solid #444;
+            padding-top: 20px;
+            margin-top: 30px;
+            text-align: left;
+            font-size: 0.9em;
             color: #b0b0b0;
-            margin-top: 25px;
-            line-height: 1.5;
-            text-align: justify;
         }
-        .conditions-text a {
+        .conditions-box p {
+            margin-bottom: 10px;
+        }
+        .conditions-box a {
             color: #8a2be2;
             text-decoration: none;
         }
-        .conditions-text a:hover {
+        .conditions-box a:hover {
             text-decoration: underline;
         }
-        .error-message {
-            color: #ff6b6b;
-            margin-bottom: 15px;
-            padding: 10px;
-            background-color: #3a1a1a;
-            border: 1px solid #6b1a1a;
-            border-radius: 4px;
-            text-align: left;
-        }
     </style>
+    <script src="https://sdk.mercadopago.com/js/v2"></script>
 </head>
 <body>
     <div class="container">
-        <h1>¿Cómo querés pagar?</h1>
+        <h1>Resumen de Compra</h1>
 
-        @if ($errors->any())
-            <div class="error-message">
-                <ul>
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
-
-        <div class="order-summary">
-            @foreach($selectedEntradas as $item)
+        @foreach ($entradasSeleccionadas as $id => $cantidad)
+            @php
+                $entrada = \App\Models\Entrada::find($id);
+            @endphp
+            @if ($entrada)
                 <div class="summary-item">
-                    <span>{{ $item['cantidad'] }}x {{ $item['nombre'] }}</span>
-                    <strong>${{ number_format($item['subtotal'], 0, ',', '.') }}</strong>
+                    <span>{{ $cantidad }}x {{ $entrada->nombre }}</span>
+                    <span>${{ number_format($entrada->precio * $cantidad, 0, ',', '.') }}</span>
                 </div>
-            @endforeach
-            <div class="summary-item total-item">
-                <span>Total</span>
-                <strong>${{ number_format($totalPagar, 0, ',', '.') }}</strong>
-            </div>
+            @endif
+        @endforeach
+
+        <div class="summary-total">
+            <span>Total</span>
+            <span>${{ number_format($total, 0, ',', '.') }}</span>
         </div>
 
-        <form action="{{ route('comprar.finalizar-compra', $evento->id) }}" method="POST">
-            @csrf
-
-            <div class="payment-options">
-                <label class="payment-option">
-                    <input type="radio" name="metodo_pago" value="mercadopago" required>
-                    <img src="https://via.placeholder.com/30/000000/FFFFFF?text=MP" alt="Mercado Pago Logo"> {{-- Reemplaza con el logo real --}}
-                    <div class="text">
-                        <strong>Mercado Pago</strong>
-                        <small>Podrás abonar con tarjeta de débito, crédito o dinero en cuenta.</small>
-                    </div>
+        <div class="payment-methods">
+            <h2>¿Cómo querés pagar?</h2>
+            <div class="payment-method-item">
+                <input type="radio" id="mercadopago" name="payment_method" value="mercadopago" checked>
+                <label for="mercadopago">
+                    <img src="https://img.icons8.com/color/48/000000/mercadopago.png" alt="Mercado Pago Logo">
+                    MercadoPago
+                    <br>
+                    <small>Podrás abonar con tarjeta de débito, crédito o dinero en cuenta.</small>
                 </label>
-
-                <label class="payment-option">
-                    <input type="radio" name="metodo_pago" value="uala" required>
-                    <img src="https://via.placeholder.com/30/000000/FFFFFF?text=UL" alt="Ualá Bis Logo"> {{-- Reemplaza con el logo real --}}
-                    <div class="text">
-                        <strong>Ualá Bis</strong>
-                        <small>Podrás abonar con tarjeta de débito, crédito o dinero en cuenta.</small>
-                    </div>
-                </label>
-                {{-- Agrega más opciones de pago aquí --}}
+            </div>
             </div>
 
-            <div class="terms-checkbox">
-                <input type="checkbox" id="acepto_condiciones" name="acepto_condiciones" required>
-                <label for="acepto_condiciones">Estoy de acuerdo con las <a href="#">condiciones de compra</a></label>
-            </div>
+        <div class="terms-checkbox">
+            <input type="checkbox" id="terms_conditions" name="terms_conditions" required>
+            <label for="terms_conditions">Estoy de acuerdo con las <a href="#">condiciones de compra</a></label>
+        </div>
 
-            <button type="submit" class="checkout-button">Continuar compra</button>
-        </form>
+        @if (isset($preference) && $preference->id)
+            <div class="cho-container" style="margin-top: 25px;"></div>
+            <script>
+                // Inicializa el SDK de Mercado Pago con tu Public Key
+                const mp = new MercadoPago("{{ config('mercadopago.client_id') }}", { // Usar CLIENT_ID como public key
+                    locale: 'es-AR'
+                });
 
-        <div class="conditions-text">
-            <p>Entiendo que estoy comprando directamente a <strong>Pinar Club Producciones</strong>, quien es responsable exclusivo de la entrega, organización y desarrollo del producto o servicio adquirido, incluyendo cualquier reclamo, devolución o inconveniente relacionado. Tikzet es una plataforma que no interviene en la venta de entradas y no participa en la organización ni en la ejecución del evento. Para más información sobre el evento y/o devoluciones/reclamos, ponte en <a href="#">contacto con el organizador</a></p>
+                // Crea el checkout con la preferencia generada en el backend
+                mp.checkout({
+                    preference: {
+                        id: '{{ $preference->id }}'
+                    },
+                    render: {
+                        container: '.cho-container', // Donde se renderizará el botón de pago
+                        label: 'Continuar compra', // Texto del botón
+                    }
+                });
+            </script>
+        @else
+            <p style="color: #ff6b6b; margin-top: 20px;">Error al generar el botón de pago. Por favor, inténtalo de nuevo.</p>
+            <a href="{{ route('comprar.checkout', $evento->id) }}" class="continue-button">Volver a intentar</a>
+        @endif
+
+
+        <div class="conditions-box">
+            <p>Condiciones generales de compra</p>
+            <p>Entiendo que estoy comprando directamente a **Pinar Club Producciones**, quien es responsable exclusivo de la entrega, organización y desarrollo del producto o servicio adquirido, incluyendo cualquier reclamo, devolución o inconveniente relacionado. Tikzet es una plataforma que no interviene en la venta de entradas y no participa en la organización ni en la ejecución del evento. Para más información sobre el evento y/o devoluciones/reclamos, ponte en <a href="#">contacto con el organizador</a></p>
         </div>
     </div>
 </body>
