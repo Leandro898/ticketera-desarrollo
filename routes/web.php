@@ -64,11 +64,16 @@ Route::get('/debug-token', function () {
     return $token ?? 'TOKEN NO DEFINIDO';
 });
 
+// Rutas para la conexión de Mercado Pago (OAuth para vendedores)
 Route::middleware(['auth'])->group(function () {
-    // ... tus rutas de mercadopago.connect y mercadopago.callback ...
+    Route::get('/mercadopago/connect', [MercadoPagoController::class, 'connect'])->name('mercadopago.connect');
+    Route::get('/mercadopago/callback', [MercadoPagoController::class, 'callback'])->name('mercadopago.callback');
 
-    // Añade esta ruta para el dashboard si no existe
-    Route::get('/dashboard', function () {
-        return view('welcome'); // Asegúrate de que tienes una vista 'dashboard.blade.php'
-    })->name('dashboard');
+    // NUEVA RUTA: Para ver el estado de la conexión
+    Route::get('/mercadopago/status', function () {
+        return view('mercadopago.status');
+    })->name('mercadopago.status');
 });
+
+// routes/web.php
+Route::post('/mercadopago/webhook', [MercadoPagoController::class, 'handleWebhook'])->name('mercadopago.webhook');

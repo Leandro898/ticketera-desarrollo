@@ -4,17 +4,17 @@ namespace App\Http\Controllers;
 
 use MercadoPago\Client\OAuth\OAuthCreateRequest;
 use Illuminate\Http\Request;
-use MercadoPago\MercadoPagoConfig; // Para la configuración global
-use MercadoPago\Client\OAuth\OAuthClient; // Para el flujo OAuth
-use MercadoPago\Client\Common\AuthorizationUri; // ¡IMPORTANTE: Añadido para el flujo OAuth!
-use MercadoPago\Client\Payment\PaymentClient; // Para consultar pagos (en webhook)
-use MercadoPago\Exceptions\MPApiException; // Para capturar excepciones específicas de MP
+use MercadoPago\MercadoPagoConfig;
+use MercadoPago\Client\OAuth\OAuthClient;
+use MercadoPago\Client\Payment\PaymentClient;
+use MercadoPago\Exceptions\MPApiException;
 use App\Models\Ticket;
 use App\Models\Entrada;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
-// use Illuminate\Support\Facades\Session; // No recomendado para webhooks, se mantiene por ahora para depuración
+use Illuminate\Support\Facades\Session; // Si la usas en handleWebhook
+use App\Models\User; // Si la usas para docblock o directamente
 
 class MercadoPagoController extends Controller
 {
@@ -83,61 +83,71 @@ class MercadoPagoController extends Controller
     public function callback(Request $request)
     {
         $code = $request->input('code');
-        $state = $request->input('state'); // Si usas el parámetro state para seguridad CSRF
+        $state = $request->input('state');
 
         if (!$code) {
             $error = $request->input('error');
             $errorDescription = $request->input('error_description');
             Log::error('Mercado Pago OAuth Callback: No se recibió el código de autorización. Error: ' . $error . ' - Descripción: ' . $errorDescription);
-            return redirect()->route('dashboard')->with('error', 'No se pudo conectar la cuenta de Mercado Pago. Motivo: ' . ($errorDescription ?: 'Autorización denegada.'));
+            return redirect()->route('mercadopago.status')->with('error', 'No se pudo conectar la cuenta de Mercado Pago. Motivo: ' . ($errorDescription ?: 'Autorización denegada.'));
         }
 
         $redirectUri = route('mercadopago.callback');
+        $clientSecret = config('mercadopago.client_secret'); // Obtener el client_secret aquí
 
         try {
             $oAuthClient = new OAuthClient();
 
-            // *** CAMBIO CRÍTICO AQUÍ: Usar un objeto OAuthCreateRequest ***
-            $requestOAuth = new OAuthCreateRequest([
-                "code"         => $code,
-                "redirect_uri" => $redirectUri,
+            // *** CAMBIO CLAVE AQUÍ: Instanciar OAuthCreateRequest y asignar propiedades ***
+            $requestOAuth = new OAuthCreateRequest(); // Instancia sin parámetros iniciales
+            $requestOAuth->code = $code;
+            $requestOAuth->redirect_uri = $redirectUri;
+            $requestOAuth->client_secret = $clientSecret; // Asignar el client_secret
+            // El grant_type 'authorization_code' es usualmente el valor por defecto para OAuthClient::create()
+            // Si después de esto sigue fallando, podríamos probar a añadirlo explícitamente aquí también
+            // $requestOAuth->grant_type = 'authorization_code';
+
+
+            // *** DEBUGGING: Muestra los datos de la solicitud antes de enviarla ***
+            // Convertimos a un array para que Log::info lo muestre bien
+            Log::info('Mercado Pago OAuth Request data BEFORE SENDING:', [
+                'code' => $requestOAuth->code,
+                'redirect_uri' => $requestOAuth->redirect_uri,
+                'client_secret' => substr($requestOAuth->client_secret, 0, 5) . '...', // Solo los primeros chars por seguridad
+                // 'grant_type' => $requestOAuth->grant_type ?? 'not_set_explicitly'
             ]);
+
 
             $response = $oAuthClient->create($requestOAuth);
 
-            // *** DEBUGGING: Muestra la respuesta de Mercado Pago ***
-            Log::info('Mercado Pago OAuth Response:', (array) $response);
-            // dd($response); // Descomenta esta línea para ver la respuesta completa en el navegador
+            // ... (resto del código: logging de respuesta, guardado, redirección) ...
+            // (Asegúrate de que la parte de los logs y el guardado del usuario esté presente aquí)
 
-            // Acceder a las propiedades de la respuesta como objeto
-            if ($response && isset($response->access_token)) {
-                $user = Auth::user();
+            /** @var \App\Models\User $user */ // Para ayudar a Intelephense
+            $user = Auth::user();
 
-                // *** DEBUGGING: Muestra la respuesta de Mercado Pago ***
-                Log::info('Mercado Pago OAuth Response:', (array) $response);
-                // dd($response); // Descomenta esta línea para ver la respuesta completa en el navegador
+            $user->mp_access_token = $response->access_token;
+            $user->mp_refresh_token = $response->refresh_token ?? null;
+            $user->mp_public_key = $response->public_key ?? null;
+            $user->mp_user_id = $response->user_id;
+            $user->mp_expires_in = now()->addSeconds($response->expires_in);
 
-                $user->mp_access_token = $response->access_token;
-                $user->mp_refresh_token = $response->refresh_token ?? null;
-                $user->mp_public_key = $response->public_key ?? null;
-                $user->mp_user_id = $response->user_id;
-                $user->mp_expires_in = now()->addSeconds($response->expires_in);
-                $user->save();
+            $user->save();
 
-                Log::info('Mercado Pago OAuth Callback: Cuenta conectada exitosamente para user_id: ' . $user->id . ' (MP User ID: ' . $user->mp_user_id . ')');
-                return redirect()->route('dashboard')->with('success', 'Cuenta de Mercado Pago conectada exitosamente.');
-            } else {
-                Log::error('Mercado Pago OAuth Callback: Error al obtener el token de Mercado Pago. Respuesta: ' . json_encode($response));
-                return redirect()->route('dashboard')->with('error', 'Error al obtener el token de Mercado Pago. Detalles: ' . json_encode($response));
-            }
+            Log::info('Mercado Pago OAuth Callback: Cuenta conectada exitosamente para user_id: ' . $user->id . ' (MP User ID: ' . $user->mp_user_id . ')');
+            return redirect()->route('mercadopago.status')->with('success', 'Cuenta de Mercado Pago conectada exitosamente.');
+
         } catch (MPApiException $e) {
+            // Muestra el contenido del error en el log
             Log::error('Mercado Pago OAuth Callback API Error: Status ' . $e->getApiResponse()->getStatusCode() . ' - Content: ' . json_encode($e->getApiResponse()->getContent()));
-            return redirect()->route('dashboard')->with('error', 'Error de API al conectar con Mercado Pago: ' . $e->getApiResponse()->getStatusCode());
+            return redirect()->route('mercadopago.status')->with('error', 'Error de API al conectar con Mercado Pago: ' . $e->getApiResponse()->getStatusCode() . ' - ' . ($e->getApiResponse()->getContent()['message'] ?? 'Error desconocido'));
         } catch (\Exception $e) {
             Log::error('Mercado Pago OAuth Callback: Error de conexión con Mercado Pago: ' . $e->getMessage());
-            return redirect()->route('dashboard')->with('error', 'Error de conexión con Mercado Pago: ' . $e->getMessage());
+            return redirect()->route('mercadopago.status')->with('error', 'Error de conexión con Mercado Pago: ' . $e->getMessage());
         }
     }
+
+    
 
     /**
      * Maneja las notificaciones de webhook de Mercado Pago.
@@ -280,7 +290,8 @@ class MercadoPagoController extends Controller
         } else {
             Log::info("Webhook: Ignorando topic: " . $topic);
         }
-
+        
         return response()->json(['status' => 'ok'], 200);
     }
+    
 }
